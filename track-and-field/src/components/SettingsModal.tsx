@@ -4,8 +4,6 @@ import {
   Check,
   Compass,
   Crosshair,
-  Download,
-  FileArchive,
   FolderOpen,
   Globe,
   Info,
@@ -13,11 +11,8 @@ import {
   Moon,
   Mountain,
   Music,
-  Navigation,
-  Package,
   Pause,
   Play,
-  Route,
   Smartphone,
   Sun,
   SunMoon,
@@ -44,16 +39,9 @@ interface SettingsModalProps {
   onChangeDefaultTrackId: (id: string) => void;
   hapticsOn: boolean;
   onToggleHaptics: () => void;
-  gpsStatus: 'searching' | 'locked' | 'simulated' | 'unavailable';
+  gpsStatus: 'searching' | 'locked' | 'unavailable';
   onRecenterGps?: () => void;
-  simulateWalk?: boolean;
-  onToggleSimulateWalk?: () => void;
   onOpenSavedTracks?: () => void;
-  onLoadDemo?: () => void;
-  isInstalled: boolean;
-  isInstallable: boolean;
-  isIOS: boolean;
-  onTriggerInstall: () => void;
 }
 
 export const SettingsModal: React.FC<SettingsModalProps> = ({
@@ -73,22 +61,11 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   onToggleHaptics,
   gpsStatus,
   onRecenterGps,
-  simulateWalk,
-  onToggleSimulateWalk,
   onOpenSavedTracks,
-  onLoadDemo,
-  isInstalled,
-  isInstallable,
-  isIOS,
-  onTriggerInstall,
 }) => {
   const t = TRANSLATIONS[lang];
   const [previewingId, setPreviewingId] = useState<string | null>(null);
   const [loadingId, setLoadingId] = useState<string | null>(null);
-  const [apkGuideVisible, setApkGuideVisible] = useState(false);
-  const [zipDownloading, setZipDownloading] = useState(false);
-  const [zipGuideVisible, setZipGuideVisible] = useState(false);
-  const [zipError, setZipError] = useState<string | null>(null);
 
   const handleClose = () => {
     haptics.tap();
@@ -113,60 +90,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       setPreviewingId(trackId);
     } finally {
       setLoadingId(null);
-    }
-  };
-
-  const handleDownloadApkConfig = () => {
-    haptics.success();
-    const pkg = {
-      appId: 'com.trackandfield.app',
-      appName: 'Track & Field',
-      webDir: 'dist',
-      server: { androidScheme: 'https' },
-      buildInstructions: [
-        '1. npm install',
-        '2. npm run build',
-        '3. npm i @capacitor/core @capacitor/cli @capacitor/android',
-        '4. npx cap add android && npx cap sync',
-        '5. npx cap open android -> Build > Build APK(s)',
-      ],
-    };
-    const blob = new Blob([JSON.stringify(pkg, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'track-and-field-capacitor-apk.json';
-    a.click();
-    URL.revokeObjectURL(url);
-    setApkGuideVisible(true);
-  };
-
-  const handleDownloadSourceZip = async () => {
-    if (zipDownloading) return;
-    haptics.tap();
-    setZipDownloading(true);
-    setZipError(null);
-    try {
-      const res = await fetch('/api/export-project-zip');
-      if (!res.ok) {
-        throw new Error(`HTTP ${res.status}`);
-      }
-      const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = 'track-and-field-source.zip';
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      URL.revokeObjectURL(url);
-      haptics.success();
-      setZipGuideVisible(true);
-    } catch {
-      haptics.warning();
-      setZipError(t.sourceZipError);
-    } finally {
-      setZipDownloading(false);
     }
   };
 
@@ -401,27 +324,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 </button>
               )}
 
-              {onToggleSimulateWalk && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    haptics.tap();
-                    onToggleSimulateWalk();
-                  }}
-                  className={`w-full min-h-[44px] px-3.5 rounded-xl text-xs font-medium flex items-center justify-between border ${
-                    simulateWalk
-                      ? 'bg-emerald-500/15 border-emerald-500/40 text-emerald-700 dark:text-emerald-200'
-                      : 'bg-slate-100 dark:bg-white/8 border-transparent'
-                  }`}
-                >
-                  <span className="inline-flex items-center gap-2">
-                    <Navigation className="w-4 h-4" />
-                    {t.simulateWalk}
-                  </span>
-                  <span>{simulateWalk ? 'ON' : 'OFF'}</span>
-                </button>
-              )}
-
               {onOpenSavedTracks && (
                 <button
                   type="button"
@@ -436,19 +338,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 </button>
               )}
 
-              {onLoadDemo && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    handleClose();
-                    onLoadDemo();
-                  }}
-                  className="w-full min-h-[44px] px-3.5 rounded-xl bg-slate-100 dark:bg-white/8 hover:bg-slate-200 dark:hover:bg-white/14 text-xs font-medium flex items-center gap-2"
-                >
-                  <Route className="w-4 h-4 text-tf-accent" />
-                  <span>{t.demoCreationTest}</span>
-                </button>
-              )}
             </div>
           </section>
 
@@ -507,112 +396,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             </div>
           </section>
 
-          {/* 5. Phone, Haptics & Android APK Packaging */}
-          <section className="space-y-2.5 pt-4 border-t border-slate-200 dark:border-white/10">
-            <h3 className="font-display text-sm font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-2">
-              <Package className="w-4 h-4 text-tf-accent" />
-              <span>{t.secPhoneApk}</span>
-            </h3>
-
-            <button
-              type="button"
-              onClick={onToggleHaptics}
-              className="w-full min-h-[44px] px-3.5 rounded-xl bg-slate-100 dark:bg-white/8 text-xs font-medium flex items-center justify-between"
-            >
-              <span className="inline-flex items-center gap-2">
-                <Smartphone className="w-4 h-4 text-tf-accent" />
-                {t.hapticsLabel}
-              </span>
-              <span className="font-mono-tabular font-semibold">
-                {hapticsOn ? 'ON' : 'OFF'}
-              </span>
-            </button>
-
-            {!isInstalled && (
-              <button
-                type="button"
-                onClick={() => {
-                  haptics.tap();
-                  onTriggerInstall();
-                }}
-                className="w-full min-h-[44px] px-3.5 rounded-xl bg-tf-accent text-white text-xs font-semibold flex items-center justify-center gap-2"
-              >
-                <Download className="w-4 h-4" />
-                <span>{t.apkInstallBtn}</span>
-              </button>
-            )}
-
-            <button
-              type="button"
-              onClick={handleDownloadApkConfig}
-              className="w-full min-h-[44px] px-3.5 rounded-xl bg-slate-100 dark:bg-white/8 hover:bg-slate-200 dark:hover:bg-white/14 text-xs font-semibold flex items-center justify-center gap-2"
-            >
-              <Package className="w-4 h-4 text-emerald-500" />
-              <span>{t.apkExportConfigBtn}</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={handleDownloadSourceZip}
-              disabled={zipDownloading}
-              className="w-full min-h-[44px] px-3.5 rounded-xl bg-slate-900 text-white dark:bg-white dark:text-slate-900 hover:opacity-90 disabled:opacity-60 text-xs font-semibold flex items-center justify-center gap-2"
-            >
-              <FileArchive className="w-4 h-4 text-tf-accent" />
-              <span>{zipDownloading ? t.downloadingSourceZip : t.downloadSourceZip}</span>
-            </button>
-
-            <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed">
-              {t.sourceZipHint}
-            </p>
-
-            {zipError && (
-              <p className="text-[11px] text-rose-500 dark:text-rose-400 font-medium">{zipError}</p>
-            )}
-
-            {zipGuideVisible && (
-              <div className="p-3 rounded-xl bg-sky-500/10 border border-sky-500/25 text-[11px] font-mono-tabular text-sky-700 dark:text-sky-200 space-y-1 overflow-x-auto">
-                <p>cd track-and-field</p>
-                <p>git init -b main &amp;&amp; git add . &amp;&amp; git commit -m &quot;init&quot;</p>
-                <p>git remote add origin https://github.com/USER/track-and-field.git</p>
-                <p>git push -u origin main</p>
-              </div>
-            )}
-
-            <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed">
-              {t.apkHint}
-            </p>
-
-            {apkGuideVisible && (
-              <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/25 text-[11px] font-mono-tabular text-emerald-700 dark:text-emerald-200 space-y-1">
-                <p>npm run build</p>
-                <p>npx cap add android &amp;&amp; npx cap sync</p>
-                <p>npx cap open android → Build APK</p>
-              </div>
-            )}
-
-            {!isInstallable && !isInstalled && (
-              <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                {isIOS
-                  ? lang === 'en'
-                    ? 'iOS Safari: Share → Add to Home Screen.'
-                    : 'Safari iOS : Partager → Sur l’écran d’accueil.'
-                  : lang === 'en'
-                    ? 'Android Chrome: Menu ⋮ → Install app (WebAPK).'
-                    : 'Chrome Android : Menu ⋮ → Installer l’application (WebAPK).'}
-              </p>
-            )}
-          </section>
-
-          {/* 6. App Summary */}
-          <section className="space-y-2 pt-4 border-t border-slate-200 dark:border-white/10">
-            <h3 className="font-display text-sm font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-2">
-              <Info className="w-4 h-4 text-tf-accent" />
-              <span>{t.secSummary}</span>
-            </h3>
-            <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed bg-slate-100 dark:bg-white/5 rounded-2xl p-3.5">
-              {t.appSummaryBody}
-            </p>
-          </section>
         </div>
       </div>
     </div>
