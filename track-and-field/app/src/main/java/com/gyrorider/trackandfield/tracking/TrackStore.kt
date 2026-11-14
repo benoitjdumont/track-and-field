@@ -17,9 +17,12 @@ data class TrackStats(
 object TrackStore {
     private const val PREFS = "track_and_field"
     private const val ACTIVE_POINTS = "active_points"
+    private const val LAST_SEEN_TIME = "last_seen_time"
 
     fun append(context: Context, location: Location) {
         val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        // Keep wall-clock activity time even when the user is stationary and no new route vertex is needed.
+        prefs.edit().putLong(LAST_SEEN_TIME, location.time).apply()
         val points = runCatching { JSONArray(prefs.getString(ACTIVE_POINTS, "[]")) }.getOrElse { JSONArray() }
         val previous = points.optJSONObject(points.length() - 1)
         if (previous != null) {
@@ -90,7 +93,9 @@ object TrackStore {
             }
         }
 
-        val duration = if (firstTime != null) (lastTime - firstTime!!).coerceAtLeast(0L) else 0L
+        val latestObservedTime = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .getLong(LAST_SEEN_TIME, lastTime)
+        val duration = if (firstTime != null) (maxOf(lastTime, latestObservedTime) - firstTime!!).coerceAtLeast(0L) else 0L
         val pace = if (distance >= 100.0 && duration > 0L) {
             duration / 1000.0 / (distance / 1000.0)
         } else null
@@ -100,7 +105,7 @@ object TrackStore {
 
     fun clear(context: Context) {
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-            .edit().remove(ACTIVE_POINTS).apply()
+            .edit().remove(ACTIVE_POINTS).remove(LAST_SEEN_TIME).apply()
     }
 
     fun formatDuration(milliseconds: Long): String {
