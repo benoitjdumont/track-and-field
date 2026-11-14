@@ -221,10 +221,10 @@ export default function App() {
           if (last && distKm < 0.004 && now - last.timestamp < 5000) return prev;
           const elapsedSec = last ? Math.max(0.5, (now - last.timestamp) / 1000) : 1;
           const nextPt: TrackPoint = {
-            lat: latitude,
-            lng: longitude,
+            lat: distKm < 0.004 && last ? last.lat : latitude,
+            lng: distKm < 0.004 && last ? last.lng : longitude,
             altitude: altitude ?? last?.altitude ?? 120,
-            speed: speed ?? (distKm * 1000) / elapsedSec,
+            speed: distKm < 0.004 ? 0 : speed ?? (distKm * 1000) / elapsedSec,
             timestamp: now,
             accuracy: accuracy ?? undefined,
           };
