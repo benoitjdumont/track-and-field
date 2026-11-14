@@ -1,4 +1,13 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import {
+  Area,
+  AreaChart,
+  CartesianGrid,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from 'recharts';
 import type * as maplibregl from 'maplibre-gl';
 import {
   ArrowLeft,
@@ -29,7 +38,7 @@ import {
 import { MUSIC_TRACKS, musicEngine } from '../audio/musicEngine';
 import { TRANSLATIONS, type Lang } from '../i18n/translations';
 import type { MapSettings, RecordedSession, VideoConfig, Waypoint } from '../types/track';
-import { downloadGpxFile, formatDuration, interpolateRouteAt } from '../utils/geo';
+import { downloadGpxFile, formatDuration, getCumulativeDistances, interpolateRouteAt } from '../utils/geo';
 import { haptics } from '../utils/haptics';
 import { saveSessionToPhone } from '../utils/storage';
 import { exportFlyoverVideo, type ExportProgress } from '../utils/videoExporter';
@@ -312,20 +321,23 @@ export const CreationStudio: React.FC<CreationStudioProps> = ({
     };
   }, [isPlaying, progress, elapsedSec, timelineMeta]);
 
-  const elevationPath = useMemo(() => {
-    if (session.points.length < 2) return '';
-    const alts = session.points.map((p) => p.altitude);
-    const minA = Math.min(...alts);
-    const maxA = Math.max(...alts);
-    const range = Math.max(10, maxA - minA);
-    return session.points
-      .map((p, idx) => {
-        const x = (idx / (session.points.length - 1)) * 300;
-        const y = 76 - ((p.altitude - minA) / range) * 60;
-        return `${idx === 0 ? 'M' : 'L'}${x.toFixed(1)},${y.toFixed(1)}`;
-      })
-      .join(' ');
+  const elevationData = useMemo(() => {
+    const distances = getCumulativeDistances(session.points);
+    return session.points.map((point, index) => ({
+      distanceKm: Number((distances[index] ?? 0).toFixed(3)),
+      altitude: Math.round(point.altitude),
+    }));
   }, [session.points]);
+
+  const paceGaugePercent = useMemo(() => {
+    const toSeconds = (pace: string | undefined) => {
+      const match = /^(\\d+)'(\\d{2})"/.exec(pace ?? '');
+      return match ? Number(match[1]) * 60 + Number(match[2]) : 0;
+    };
+    const average = toSeconds(session.stats.paceMinPerKm);
+    const best = toSeconds(session.stats.bestPaceMinPerKm);
+    return average > 0 && best > 0 ? Math.max(0, Math.min(100, (best / average) * 100)) : 0;
+  }, [session.stats.paceMinPerKm, session.stats.bestPaceMinPerKm]);
 
   const handleAnalyzeWithAI = async () => {
     haptics.tap();
@@ -1302,6 +1314,7 @@ export const CreationStudio: React.FC<CreationStudioProps> = ({
                     { label: t.maxSpeedLabel, value: `${session.stats.maxSpeedKmh.toFixed(1)} km/h` },
                     { label: t.elevationLabel, value: `+${session.stats.elevationGainM} m` },
                     { label: t.paceLabel, value: `${session.stats.paceMinPerKm} /km` },
+                    { label: t.bestPaceLabel, value: `${session.stats.bestPaceMinPerKm ?? '--\\'--"'} /km` },
                   ].map((stat) => (
                     <div
                       key={stat.label}
@@ -1317,6 +1330,23 @@ export const CreationStudio: React.FC<CreationStudioProps> = ({
                   ))}
                 </div>
 
+                <div className="p-4 rounded-2xl bg-slate-100 dark:bg-slate-900/70 border border-slate-200 dark:border-white/10 space-y-2.5">
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="text-xs font-medium">{lang === 'en' ? 'Average pace' : 'Allure moyenne'}</span>
+                    <span className="font-mono-tabular text-sm font-bold">{session.stats.paceMinPerKm} /km</span>
+                  </div>
+                  <div className="h-2.5 rounded-full bg-slate-200 dark:bg-white/10 overflow-hidden">
+                    <div
+                      className="h-full rounded-full bg-tf-accent transition-all"
+                      style={{ width: `${paceGaugePercent}%` }}
+                    />
+                  </div>
+                  <div className="flex items-center justify-between gap-3 text-xs">
+                    <span className="text-slate-500 dark:text-slate-400">{t.bestPaceLabel}</span>
+                    <span className="font-mono-tabular font-bold">{session.stats.bestPaceMinPerKm ?? '--'} /km</span>
+                  </div>
+                </div>
+
                 <div className="p-4 rounded-2xl bg-slate-100 dark:bg-slate-900/70 border border-slate-200 dark:border-white/10">
                   <div className="flex items-center justify-between mb-2">
                     <span className="text-xs font-medium inline-flex items-center gap-1.5">
@@ -1327,26 +1357,57 @@ export const CreationStudio: React.FC<CreationStudioProps> = ({
                       {Math.round(currentFlyover.altitude)} m
                     </span>
                   </div>
-                  <svg viewBox="0 0 300 84" className="w-full h-24 overflow-visible">
-                    {elevationPath && (
-                      <path
-                        d={elevationPath}
-                        fill="none"
-                        stroke={accentColor}
-                        strokeWidth="2.5"
-                        strokeLinecap="round"
-                      />
-                    )}
-                    <line
-                      x1={routeProgress * 300}
-                      y1={4}
-                      x2={routeProgress * 300}
-                      y2={80}
-                      stroke={isDark ? '#FFFFFF' : '#0F172A'}
-                      strokeOpacity="0.45"
-                      strokeDasharray="3 3"
-                    />
-                  </svg>
+                  <div className="w-full h-36" role="img" aria-label={t.elevationProfile}>
+                    <ResponsiveContainer width="100%" height="100%">
+                      <AreaChart data={elevationData} margin={{ top: 8, right: 10, left: -22, bottom: 2 }}>
+                        <defs>
+                          <linearGradient id="trackElevationFill" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="0%" stopColor={accentColor} stopOpacity={0.34} />
+                            <stop offset="100%" stopColor={accentColor} stopOpacity={0.03} />
+                          </linearGradient>
+                        </defs>
+                        <CartesianGrid strokeDasharray="3 3" stroke={isDark ? '#334155' : '#CBD5E1'} />
+                        <XAxis
+                          dataKey="distanceKm"
+                          type="number"
+                          domain={['dataMin', 'dataMax']}
+                          tickFormatter={(value: number) => `${Number(value).toFixed(1)} km`}
+                          tick={{ fontSize: 10, fill: isDark ? '#94A3B8' : '#64748B' }}
+                          axisLine={false}
+                          tickLine={false}
+                        />
+                        <YAxis
+                          domain={['auto', 'auto']}
+                          tickFormatter={(value: number) => `${Math.round(value)} m`}
+                          tick={{ fontSize: 10, fill: isDark ? '#94A3B8' : '#64748B' }}
+                          axisLine={false}
+                          tickLine={false}
+                        />
+                        <Tooltip
+                          labelFormatter={(value) => `${Number(value).toFixed(2)} km`}
+                          formatter={(value) => [`${Math.round(Number(value))} m`, t.altitudeLabel]}
+                          contentStyle={{
+                            background: isDark ? '#0F172A' : '#FFFFFF',
+                            border: `1px solid ${isDark ? '#334155' : '#CBD5E1'}`,
+                            borderRadius: 12,
+                            color: isDark ? '#F8FAFC' : '#0F172A',
+                            fontSize: 12,
+                          }}
+                        />
+                        <Area
+                          type="monotone"
+                          dataKey="altitude"
+                          stroke={accentColor}
+                          strokeWidth={2.5}
+                          fill="url(#trackElevationFill)"
+                          activeDot={{ r: 5, strokeWidth: 2 }}
+                        />
+                      </AreaChart>
+                    </ResponsiveContainer>
+                  </div>
+                  <p className="mt-1 text-[10px] text-slate-500 dark:text-slate-400">
+                    {lang === 'en' ? 'Hover or tap the profile to see altitude.' : 'Survolez ou touchez le profil pour voir l’altitude.'}
+                  </p>
                 </div>
 
                 <button
