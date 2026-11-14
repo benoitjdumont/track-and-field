@@ -43,6 +43,7 @@ class MainActivity : ComponentActivity() {
         setContent {
             TrackAndFieldScreen(
                 loadStats = { TrackStore.stats(this) },
+                loadRoutePoints = { TrackStore.routeCoordinates(this) },
                 onStart = { startTracking() },
                 onPause = { sendTrackingAction(TrackingService.ACTION_PAUSE) },
                 onStop = { sendTrackingAction(TrackingService.ACTION_STOP) }
@@ -87,16 +88,19 @@ class MainActivity : ComponentActivity() {
 @Composable
 private fun TrackAndFieldScreen(
     loadStats: () -> TrackStats,
+    loadRoutePoints: () -> List<Pair<Double, Double>>,
     onStart: () -> Unit,
     onPause: () -> Unit,
     onStop: () -> Unit
 ) {
     var started by remember { mutableStateOf(false) }
     var stats by remember { mutableStateOf(TrackStats()) }
+    var routePoints by remember { mutableStateOf(emptyList<Pair<Double, Double>>()) }
 
     LaunchedEffect(Unit) {
         while (true) {
             stats = loadStats()
+            routePoints = loadRoutePoints()
             delay(1000)
         }
     }
@@ -198,7 +202,7 @@ private fun TrackAndFieldScreen(
                     colors = CardDefaults.cardColors(containerColor = Color.White),
                     modifier = Modifier.fillMaxWidth().weight(1f)
                 ) {
-                    NativeRouteMap(Modifier.fillMaxSize())
+                    NativeRouteMap(routePoints = routePoints, modifier = Modifier.fillMaxSize())
                 }
             }
         }
