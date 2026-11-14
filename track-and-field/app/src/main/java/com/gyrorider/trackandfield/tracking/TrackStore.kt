@@ -4,10 +4,12 @@ import android.content.Context
 import android.location.Location
 import org.json.JSONArray
 import org.json.JSONObject
+import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import java.util.TimeZone
+import java.util.UUID
 import kotlin.math.roundToInt
 
 data class TrackStats(
@@ -30,6 +32,17 @@ data class Marker(
     val file: String // chemin du fichier, vide pour une note écrite
 )
 
+/** Une sortie sauvegardée : parcours, repères et stats, gardés même après un nouveau départ. */
+data class Outing(
+    val id: String,
+    val name: String,
+    val time: Long,
+    val distanceMeters: Double,
+    val durationMillis: Long,
+    val pointsJson: String,
+    val markers: List<Marker>
+)
+
 object TrackStore {
     const val STATE_IDLE = "idle"
     const val STATE_RECORDING = "recording"
@@ -42,6 +55,7 @@ object TrackStore {
     private const val STATE = "state"
     private const val MARKERS = "markers"
     private const val NIGHT = "night"
+    private const val OUTINGS = "outings"
 
     private fun prefs(context: Context) = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
 
@@ -186,8 +200,10 @@ object TrackStore {
         context.getSharedPreferences(SETTINGS, Context.MODE_PRIVATE).edit().putString(NIGHT, mode).apply()
 
     // ---- export GPX 1.1
-    fun gpx(context: Context): String {
-        val points = currentPoints(context)
+    fun gpx(context: Context): String = gpxOf(currentPoints(context).toString())
+
+    fun gpxOf(pointsJson: String): String {
+        val points = runCatching { JSONArray(pointsJson) }.getOrElse { JSONArray() }
         val iso = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", Locale.US).apply { timeZone = TimeZone.getTimeZone("UTC") }
         val sb = StringBuilder()
         sb.append("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n")
@@ -201,6 +217,89 @@ object TrackStore {
         }
         sb.append("  </trkseg></trk>\n</gpx>\n")
         return sb.toString()
+    }
+
+    // ---- sorties sauvegardées
+    private fun markerJson(m: Marker) = JSONObject().apply {
+        put("id", m.id); put("type", m.type); put("lat", m.lat); put("lon", m.lon); put("time", m.time)
+        put("title", m.title); put("text", m.text); put("file", m.file)
+    }
+
+    private fun markerFrom(o: JSONObject) = Marker(
+        id = o.optString("id"), type = o.optString("type"),
+        lat = o.optDouble("lat"), lon = o.optDouble("lon"), time = o.optLong("time"),
+        title = o.optString("title"), text = o.optString("text"), file = o.optString("file"),
+    )
+
+    private fun savedArray(context: Context): JSONArray =
+        runCatching { JSONArray(prefs(context).getString(OUTINGS, "[]")) }.getOrElse { JSONArray() }
+
+    fun outings(context: Context): List<Outing> {
+        val arr = savedArray(context)
+        return (0 until arr.length()).mapNotNull { i ->
+            val o = arr.optJSONObject(i) ?: return@mapNotNull null
+            val markers = o.optJSONArray("markers") ?: JSONArray()
+            Outing(
+                id = o.optString("id"),
+                name = o.optString("name"),
+                time = o.optLong("time"),
+                distanceMeters = o.optDouble("distance", 0.0),
+                durationMillis = o.optLong("duration"),
+                pointsJson = o.optString("points", "[]"),
+                markers = (0 until markers.length()).mapNotNull { j -> markers.optJSONObject(j)?.let(::markerFrom) }
+            )
+        }
+    }
+
+    /** Garde la sortie en cours dans la liste. Renvoie false s'il n'y a aucun point. */
+    fun saveOuting(context: Context, name: String): Boolean {
+        val points = currentPoints(context)
+        if (points.length() == 0) return false
+        val s = stats(context)
+        val start = points.optJSONObject(0)?.optLong("time") ?: System.currentTimeMillis()
+        val markersArr = JSONArray()
+        markers(context).forEach { markersArr.put(markerJson(it)) }
+        val arr = savedArray(context)
+        arr.put(JSONObject().apply {
+            put("id", UUID.randomUUID().toString())
+            put("name", name)
+            put("time", start)
+            put("distance", s.distanceMeters)
+            put("duration", s.durationMillis)
+            put("points", points.toString())
+            put("markers", markersArr)
+        })
+        prefs(context).edit().putString(OUTINGS, arr.toString()).apply()
+        return true
+    }
+
+    /** Supprime une sortie. Les photos ou vidéos encore utilisées par le parcours en cours sont gardées. */
+    fun deleteOuting(context: Context, id: String) {
+        val arr = savedArray(context)
+        val kept = JSONArray()
+        val activeFiles = markers(context).map { it.file }.toSet()
+        for (i in 0 until arr.length()) {
+            val o = arr.optJSONObject(i) ?: continue
+            if (o.optString("id") == id) {
+                val markers = o.optJSONArray("markers") ?: JSONArray()
+                for (j in 0 until markers.length()) {
+                    val file = markers.optJSONObject(j)?.optString("file").orEmpty()
+                    if (file.isNotBlank() && file !in activeFiles) File(file).delete()
+                }
+            } else kept.put(o)
+        }
+        prefs(context).edit().putString(OUTINGS, kept.toString()).apply()
+    }
+
+    /** Coordonnées (lat, lon) d'un parcours sauvegardé. */
+    fun coordinatesOf(pointsJson: String): List<Pair<Double, Double>> {
+        val points = runCatching { JSONArray(pointsJson) }.getOrElse { JSONArray() }
+        return (0 until points.length()).mapNotNull { index ->
+            val point = points.optJSONObject(index) ?: return@mapNotNull null
+            val lat = point.optDouble("lat", Double.NaN)
+            val lon = point.optDouble("lon", Double.NaN)
+            if (lat.isFinite() && lon.isFinite()) lat to lon else null
+        }
     }
 
     // ---- affichage

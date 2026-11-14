@@ -14,6 +14,9 @@ import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.background
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -27,6 +30,7 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Notes
@@ -37,6 +41,8 @@ import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.filled.Videocam
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
@@ -64,6 +70,7 @@ import androidx.core.content.FileProvider
 import com.google.android.gms.location.LocationServices
 import com.gyrorider.trackandfield.map.NativeRouteMap
 import com.gyrorider.trackandfield.tracking.Marker
+import com.gyrorider.trackandfield.tracking.Outing
 import com.gyrorider.trackandfield.tracking.TrackStats
 import com.gyrorider.trackandfield.tracking.TrackStore
 import com.gyrorider.trackandfield.tracking.TrackingService
@@ -271,15 +278,19 @@ class MainActivity : ComponentActivity() {
 
     // ---------------------------------------------------------------- export GPX
 
-    private fun exportGpx() {
+    private fun exportCurrent() {
         if (TrackStore.routeCoordinates(this).isEmpty()) {
             toast("Aucun parcours à exporter.")
             return
         }
+        exportGpx(TrackStore.gpx(this), "track-" + SimpleDateFormat("yyyyMMdd-HHmm", Locale.US).format(Date()))
+    }
+
+    private fun exportGpx(content: String, name: String) {
         val dir = File(cacheDir, "exports").apply { mkdirs() }
-        val stamp = SimpleDateFormat("yyyyMMdd-HHmm", Locale.US).format(Date())
-        val file = File(dir, "track-$stamp.gpx")
-        file.writeText(TrackStore.gpx(this))
+        val safe = name.replace(Regex("[^A-Za-z0-9_-]+"), "_").trim('_').ifBlank { "sortie" }
+        val file = File(dir, "$safe.gpx")
+        file.writeText(content)
         val uri = uriFor(file)
         val send = Intent(Intent.ACTION_SEND)
             .setType("application/gpx+xml")
@@ -289,6 +300,9 @@ class MainActivity : ComponentActivity() {
         send.clipData = ClipData.newRawUri("", uri)
         startActivity(Intent.createChooser(send, "Exporter le parcours"))
     }
+
+    private fun defaultOutingName(): String =
+        "Sortie " + SimpleDateFormat("d MMM HH:mm", Locale.getDefault()).format(Date())
 
     private fun toast(message: String) = Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
 
@@ -305,6 +319,10 @@ class MainActivity : ComponentActivity() {
         var sheetOpen by remember { mutableStateOf(false) }
         var settingsOpen by remember { mutableStateOf(false) }
         var detail by remember { mutableStateOf<Marker?>(null) }
+        var saveAsk by remember { mutableStateOf(false) }
+        var outingsOpen by remember { mutableStateOf(false) }
+        var outings by remember { mutableStateOf(emptyList<Outing>()) }
+        var viewing by remember { mutableStateOf<Outing?>(null) }
 
         LaunchedEffect(Unit) {
             while (true) {
@@ -323,6 +341,12 @@ class MainActivity : ComponentActivity() {
             else -> hour < 7 || hour >= 19
         }
         val recording = state == TrackStore.STATE_RECORDING
+        val shownRoute = remember(viewing) { viewing?.let { TrackStore.coordinatesOf(it.pointsJson) } } ?: route
+        val shownMarkers = viewing?.markers ?: markers
+        val v = viewing
+        LaunchedEffect(outingsOpen) {
+            if (outingsOpen) outings = TrackStore.outings(this@MainActivity)
+        }
         val paused = state == TrackStore.STATE_PAUSED
         val current = draft
 
@@ -331,10 +355,10 @@ class MainActivity : ComponentActivity() {
         ) {
             Box(Modifier.fillMaxSize()) {
                 NativeRouteMap(
-                    routePoints = route,
-                    markers = markers,
+                    routePoints = shownRoute,
+                    markers = shownMarkers,
                     night = night,
-                    follow = recording,
+                    follow = recording && v == null,
                     onMarkerTap = { detail = it },
                     modifier = Modifier.fillMaxSize()
                 )
@@ -347,7 +371,7 @@ class MainActivity : ComponentActivity() {
                 ) {
                     Pill("Track & Field", night) { }
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        RoundButton(night, onClick = { exportGpx() }) {
+                        RoundButton(night, onClick = { if (v != null) exportGpx(TrackStore.gpxOf(v.pointsJson), v.name) else exportCurrent() }) {
                             Icon(Icons.Default.Download, contentDescription = "Télécharger le GPX")
                         }
                         Pill("Paramètres", night, icon = { Icon(Icons.Default.Settings, contentDescription = null) }) {
@@ -362,6 +386,20 @@ class MainActivity : ComponentActivity() {
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
+                    if (v != null) {
+                        StatsStrip(
+                            TrackStats(
+                                distanceMeters = v.distanceMeters,
+                                durationMillis = v.durationMillis,
+                                averagePaceSecondsPerKm = if (v.distanceMeters >= 100.0 && v.durationMillis > 0L)
+                                    v.durationMillis / 1000.0 / (v.distanceMeters / 1000.0) else null
+                            ),
+                            night
+                        )
+                        Pill("Retour à la carte", night, filled = true, icon = { Icon(Icons.Default.Close, contentDescription = null) }) {
+                            viewing = null
+                        }
+                    } else {
                     if (recording || paused) StatsStrip(stats, night)
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
@@ -374,6 +412,7 @@ class MainActivity : ComponentActivity() {
                                 }
                                 Pill("Terminer", night, icon = { Icon(Icons.Default.Stop, contentDescription = null) }) {
                                     sendTrackingAction(TrackingService.ACTION_STOP)
+                                    if (TrackStore.currentPoints(this@MainActivity).length() > 0) saveAsk = true
                                 }
                             }
                             paused -> {
@@ -382,6 +421,7 @@ class MainActivity : ComponentActivity() {
                                 }
                                 Pill("Terminer", night, icon = { Icon(Icons.Default.Stop, contentDescription = null) }) {
                                     sendTrackingAction(TrackingService.ACTION_STOP)
+                                    if (TrackStore.currentPoints(this@MainActivity).length() > 0) saveAsk = true
                                 }
                             }
                             else -> {
@@ -393,6 +433,7 @@ class MainActivity : ComponentActivity() {
                         RoundButton(night, onClick = { sheetOpen = true }) {
                             Icon(Icons.Default.Add, contentDescription = "Ajouter un repère")
                         }
+                    }
                     }
                 }
             }
@@ -431,9 +472,12 @@ class MainActivity : ComponentActivity() {
                                 )
                             }
                         }
-                        OutlinedButton(onClick = { exportGpx() }, modifier = Modifier.fillMaxWidth()) {
+                        OutlinedButton(onClick = { exportCurrent() }, modifier = Modifier.fillMaxWidth()) {
                             Icon(Icons.Default.Download, contentDescription = null)
                             Text(" Exporter le parcours (GPX)")
+                        }
+                        OutlinedButton(onClick = { settingsOpen = false; outingsOpen = true }, modifier = Modifier.fillMaxWidth()) {
+                            Text("Mes sorties sauvegardées")
                         }
                     }
                 },
@@ -458,6 +502,73 @@ class MainActivity : ComponentActivity() {
                     },
                     onCancel = { discardDraft(current) }
                 )
+            }
+        }
+
+        // garder la sortie après « Terminer »
+        if (saveAsk) {
+            var name by remember { mutableStateOf(defaultOutingName()) }
+            AlertDialog(
+                onDismissRequest = { saveAsk = false },
+                title = { Text("Garder cette sortie ?") },
+                text = {
+                    OutlinedTextField(
+                        value = name,
+                        onValueChange = { name = it },
+                        label = { Text("Nom") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                },
+                confirmButton = {
+                    Button(onClick = {
+                        val ok = TrackStore.saveOuting(this@MainActivity, name.trim().ifBlank { defaultOutingName() })
+                        saveAsk = false
+                        toast(if (ok) "Sortie sauvegardée." else "Rien à sauvegarder.")
+                    }) { Text("Sauvegarder") }
+                },
+                dismissButton = { TextButton(onClick = { saveAsk = false }) { Text("Pas maintenant") } }
+            )
+        }
+
+        // liste des sorties sauvegardées
+        if (outingsOpen) {
+            ModalBottomSheet(onDismissRequest = { outingsOpen = false }) {
+                Column(
+                    Modifier.fillMaxWidth().navigationBarsPadding().padding(16.dp).verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Text("Mes sorties", fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                    if (outings.isEmpty()) {
+                        Text("Aucune sortie sauvegardée. Appuyez sur Terminer, puis Sauvegarder.")
+                    }
+                    outings.forEach { o ->
+                        Column(
+                            Modifier.fillMaxWidth()
+                                .background(panelColor(night), RoundedCornerShape(16.dp))
+                                .padding(12.dp),
+                            verticalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            Text(o.name, fontWeight = FontWeight.Bold)
+                            Text(
+                                "${SimpleDateFormat("d MMM yyyy HH:mm", Locale.getDefault()).format(Date(o.time))} · " +
+                                    "%.2f km · ".format(o.distanceMeters / 1000.0) +
+                                    "${TrackStore.formatDuration(o.durationMillis)} · ${o.markers.size} repère(s)",
+                                fontSize = 12.sp
+                            )
+                            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                TextButton(onClick = { viewing = o; outingsOpen = false }) { Text("Voir") }
+                                TextButton(onClick = { exportGpx(TrackStore.gpxOf(o.pointsJson), o.name) }) { Text("GPX") }
+                                TextButton(onClick = {
+                                    if (viewing?.id == o.id) viewing = null
+                                    TrackStore.deleteOuting(this@MainActivity, o.id)
+                                    outings = TrackStore.outings(this@MainActivity)
+                                }) { Text("Supprimer") }
+                            }
+                        }
+                    }
+                    Box(Modifier.height(24.dp))
+                }
             }
         }
 

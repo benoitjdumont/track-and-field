@@ -22,6 +22,7 @@ import org.maplibre.android.MapLibre
 import org.maplibre.android.camera.CameraPosition
 import org.maplibre.android.camera.CameraUpdateFactory
 import org.maplibre.android.geometry.LatLng
+import org.maplibre.android.geometry.LatLngBounds
 import org.maplibre.android.maps.MapLibreMap
 import org.maplibre.android.maps.MapView
 import org.maplibre.android.maps.Style
@@ -103,6 +104,11 @@ fun NativeRouteMap(
         val last = routePoints.lastOrNull()
         if (follow && last != null) {
             mapState.value?.animateCamera(CameraUpdateFactory.newLatLngZoom(LatLng(last.first, last.second), FOLLOW_ZOOM), 800)
+        } else if (!follow && routePoints.size >= 2) {
+            // sortie affichée (sauvegardée) : on cadre tout le parcours
+            val bounds = LatLngBounds.Builder()
+            routePoints.forEach { bounds.include(LatLng(it.first, it.second)) }
+            mapState.value?.animateCamera(CameraUpdateFactory.newLatLngBounds(bounds.build(), 140), 600)
         }
     }
 
