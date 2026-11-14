@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import type * as maplibregl from 'maplibre-gl';
 import {
   Camera,
+  Download,
   Mic,
   Pause,
   Play,
