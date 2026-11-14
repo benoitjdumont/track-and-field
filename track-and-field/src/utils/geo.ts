@@ -108,7 +108,7 @@ export function computeTrackStats(
     const prev = points[i - 1];
     const curr = points[i];
     const segKm = haversineKm(prev, curr);
-    distanceKm += segKm;
+    if (segKm >= 0.004) distanceKm += segKm;
 
     const dtSec = Math.max(0.5, (curr.timestamp - prev.timestamp) / 1000);
     const computedKmh = (segKm / dtSec) * 3600;
@@ -117,9 +117,12 @@ export function computeTrackStats(
       maxSpeedKmh = Math.max(maxSpeedKmh, sensorKmh);
     }
 
-    const dAlt = curr.altitude - prev.altitude;
-    if (dAlt > 0.6) elevationGainM += dAlt;
-    else if (dAlt < -0.6) elevationLossM += Math.abs(dAlt);
+    // Ignore altitude sensor jitter while the recorded position is stationary.
+    if (segKm >= 0.004) {
+      const dAlt = curr.altitude - prev.altitude;
+      if (dAlt > 0.6) elevationGainM += dAlt;
+      else if (dAlt < -0.6) elevationLossM += Math.abs(dAlt);
+    }
   }
 
   const rawDurationSec =
