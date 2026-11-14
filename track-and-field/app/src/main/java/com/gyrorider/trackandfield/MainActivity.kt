@@ -26,6 +26,7 @@ import androidx.core.content.ContextCompat
 import com.gyrorider.trackandfield.tracking.TrackStats
 import com.gyrorider.trackandfield.tracking.TrackStore
 import com.gyrorider.trackandfield.tracking.TrackingService
+import com.gyrorider.trackandfield.map.NativeRouteMap
 import kotlinx.coroutines.delay
 
 private val PaleBlue = Color(0xFFEAF5FF)
@@ -197,12 +198,7 @@ private fun TrackAndFieldScreen(
                     colors = CardDefaults.cardColors(containerColor = Color.White),
                     modifier = Modifier.fillMaxWidth().weight(1f)
                 ) {
-                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        Text(
-                            "Carte et parcours GPS\nIntégration cartographique native en cours",
-                            color = AccentBlue
-                        )
-                    }
+                    NativeRouteMap(Modifier.fillMaxSize())
                 }
             }
         }
