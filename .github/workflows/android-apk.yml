@@ -5,6 +5,7 @@ on:
   push:
     branches:
       - android/kotlin-native
+      - kotlin-restore
     paths:
       - 'track-and-field/**'
       - '.github/workflows/android-apk.yml'

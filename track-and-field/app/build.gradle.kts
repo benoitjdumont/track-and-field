@@ -12,8 +12,22 @@ android {
         applicationId = "com.gyrorider.trackandfield"
         minSdk = 26
         targetSdk = 35
-        versionCode = 1
-        versionName = "0.1.0"
+        versionCode = (project.findProperty("vCode") as String?)?.toIntOrNull() ?: 1
+        versionName = "0.2.${versionCode}"
+    }
+
+    // clé de signature fixe : sans elle, Android refuse d'installer une version par-dessus la précédente
+    signingConfigs {
+        create("fixed") {
+            storeFile = file("trackandfield.jks")
+            storePassword = "trackandfield-sideload"
+            keyAlias = "trackandfield"
+            keyPassword = "trackandfield-sideload"
+        }
+    }
+
+    buildTypes {
+        debug { signingConfig = signingConfigs.getByName("fixed") }
     }
 
     buildFeatures { compose = true }
@@ -36,6 +50,7 @@ dependencies {
     implementation("com.google.android.gms:play-services-location:21.3.0")
     implementation("org.maplibre.gl:android-sdk:13.7.1")
     implementation("androidx.datastore:datastore-preferences:1.1.1")
+    implementation("androidx.core:core-ktx:1.15.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
     debugImplementation("androidx.compose.ui:ui-tooling")
 }

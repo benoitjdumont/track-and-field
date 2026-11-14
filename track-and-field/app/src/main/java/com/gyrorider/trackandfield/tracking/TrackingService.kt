@@ -30,25 +30,28 @@ class TrackingService : Service() {
         when (intent?.action) {
             ACTION_START -> {
                 startForegroundCompat()
-                // A repeated Start command must not erase the current outing or duplicate callbacks.
                 if (callback == null) {
-                    TrackStore.clear(this)
+                    // Nouvelle sortie : on efface l'ancienne. Une reprise après pause garde le parcours.
+                    if (TrackStore.state(this) == TrackStore.STATE_IDLE) TrackStore.clear(this)
+                    TrackStore.setState(this, TrackStore.STATE_RECORDING)
                     startLocationUpdates()
                 }
             }
             ACTION_PAUSE -> {
                 callback?.let { client.removeLocationUpdates(it) }
                 callback = null
+                TrackStore.setState(this, TrackStore.STATE_PAUSED)
                 startForegroundCompat("Suivi en pause")
             }
             ACTION_STOP -> {
                 callback?.let { client.removeLocationUpdates(it) }
                 callback = null
+                TrackStore.setState(this, TrackStore.STATE_IDLE)
                 stopForeground(STOP_FOREGROUND_REMOVE)
                 stopSelf()
             }
         }
-        return START_STICKY
+        return START_NOT_STICKY
     }
 
     private fun startForegroundCompat(text: String = "Enregistrement GPS en cours") {
