@@ -4,6 +4,15 @@ import android.content.Context
 import android.location.Location
 import org.json.JSONArray
 import org.json.JSONObject
+import kotlin.math.roundToInt
+
+data class TrackStats(
+    val distanceMeters: Double = 0.0,
+    val durationMillis: Long = 0L,
+    val averagePaceSecondsPerKm: Double? = null,
+    val elevationGainMeters: Double = 0.0,
+    val pointCount: Int = 0
+)
 
 object TrackStore {
     private const val PREFS = "track_and_field"
@@ -18,6 +27,7 @@ object TrackStore {
                 latitude = previous.optDouble("lat")
                 longitude = previous.optDouble("lon")
             }
+            // Filter small GPS drift without stopping location collection.
             if (old.distanceTo(location) < 4f) return
         }
         points.put(JSONObject().apply {
@@ -31,11 +41,70 @@ object TrackStore {
     }
 
     fun currentPoints(context: Context): JSONArray {
-        val raw = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(ACTIVE_POINTS, "[]")
+        val raw = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .getString(ACTIVE_POINTS, "[]")
         return runCatching { JSONArray(raw) }.getOrElse { JSONArray() }
     }
 
+    fun stats(context: Context): TrackStats {
+        val points = currentPoints(context)
+        if (points.length() == 0) return TrackStats()
+
+        var distance = 0.0
+        var elevationGain = 0.0
+        var previousAltitude: Double? = null
+        var firstTime: Long? = null
+        var lastTime = 0L
+        var previousLocation: Location? = null
+
+        for (index in 0 until points.length()) {
+            val point = points.optJSONObject(index) ?: continue
+            val timestamp = point.optLong("time")
+            if (firstTime == null) firstTime = timestamp
+            lastTime = timestamp
+
+            val location = Location("track").apply {
+                latitude = point.optDouble("lat")
+                longitude = point.optDouble("lon")
+            }
+            previousLocation?.let { distance += it.distanceTo(location).toDouble() }
+            previousLocation = location
+
+            if (!point.isNull("alt")) {
+                val altitude = point.optDouble("alt")
+                previousAltitude?.let { previous ->
+                    val climb = altitude - previous
+                    if (climb > 3.0) elevationGain += climb
+                }
+                previousAltitude = altitude
+            }
+        }
+
+        val duration = if (firstTime != null) (lastTime - firstTime!!).coerceAtLeast(0L) else 0L
+        val pace = if (distance >= 100.0 && duration > 0L) {
+            duration / 1000.0 / (distance / 1000.0)
+        } else null
+
+        return TrackStats(distance, duration, pace, elevationGain, points.length())
+    }
+
     fun clear(context: Context) {
-        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().remove(ACTIVE_POINTS).apply()
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .edit().remove(ACTIVE_POINTS).apply()
+    }
+
+    fun formatDuration(milliseconds: Long): String {
+        val seconds = milliseconds / 1000
+        val hours = seconds / 3600
+        val minutes = (seconds % 3600) / 60
+        val remainder = seconds % 60
+        return if (hours > 0) "%d:%02d:%02d".format(hours, minutes, remainder)
+        else "%02d:%02d".format(minutes, remainder)
+    }
+
+    fun formatPace(secondsPerKm: Double?): String {
+        if (secondsPerKm == null || !secondsPerKm.isFinite()) return "--:--"
+        val total = secondsPerKm.roundToInt().coerceAtLeast(0)
+        return "%d:%02d".format(total / 60, total % 60)
     }
 }
