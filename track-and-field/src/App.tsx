@@ -2,7 +2,6 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import type * as maplibregl from 'maplibre-gl';
 import {
   Camera,
-  Download,
   Mic,
   Pause,
   Play,
@@ -19,7 +18,6 @@ import { MapStage } from './components/MapStage';
 import { MediaCaptureModal } from './components/MediaCaptureModal';
 import { SettingsModal } from './components/SettingsModal';
 import { WaypointViewerModal } from './components/WaypointViewerModal';
-import { usePWAInstall } from './hooks/usePWAInstall';
 import { TRANSLATIONS, type Lang } from './i18n/translations';
 import type {
   MapSettings,
@@ -29,9 +27,7 @@ import type {
   WaypointType,
 } from './types/track';
 import {
-  buildDemoSession,
   computeTrackStats,
-  createDemoSvgPhotoUrl,
   downloadGpxFile,
   formatDuration,
   haversineKm,
@@ -67,10 +63,8 @@ function readStorage<T extends string>(key: string, fallback: T): T {
 export default function App() {
   const mapRef = useRef<maplibregl.Map | null>(null);
   const watchIdRef = useRef<number | null>(null);
-  const simIntervalRef = useRef<number | null>(null);
   const timerIntervalRef = useRef<number | null>(null);
   const lastTickRef = useRef<number>(Date.now());
-  const simAngleRef = useRef<number>(0.4);
 
   const [screen, setScreen] = useState<AppScreen>('map');
   const [recordStatus, setRecordStatus] = useState<RecordStatus>('idle');
@@ -100,10 +94,9 @@ export default function App() {
 
   const [currentCenter, setCurrentCenter] = useState<[number, number]>(DEFAULT_CENTER);
   const [livePosition, setLivePosition] = useState<[number, number] | null>(DEFAULT_CENTER);
-  const [gpsStatus, setGpsStatus] = useState<'searching' | 'locked' | 'simulated' | 'unavailable'>(
+  const [gpsStatus, setGpsStatus] = useState<'searching' | 'locked' | 'unavailable'>(
     'searching'
   );
-  const [simulateWalk, setSimulateWalk] = useState(false);
 
   const [points, setPoints] = useState<TrackPoint[]>([]);
   const [waypoints, setWaypoints] = useState<Waypoint[]>([]);
@@ -114,12 +107,10 @@ export default function App() {
   const [captureMode, setCaptureMode] = useState<WaypointType | null>(null);
   const [inspectWaypoint, setInspectWaypoint] = useState<Waypoint | null>(null);
   const [activeSession, setActiveSession] = useState<RecordedSession | null>(null);
-  const [showInstallHelp, setShowInstallHelp] = useState(false);
   const [hapticsOn, setHapticsOn] = useState(() => isHapticsEnabled());
   const [savedDrawerOpen, setSavedDrawerOpen] = useState(false);
   const [savedSessions, setSavedSessions] = useState<RecordedSession[]>([]);
 
-  const { isInstallable, isInstalled, isIOS, install } = usePWAInstall();
   const t = TRANSLATIONS[lang];
   const accentHex = getAccentHex(accentColorId);
 
@@ -197,7 +188,7 @@ export default function App() {
 
   // Real GPS watchPosition when recording
   useEffect(() => {
-    if (recordStatus !== 'recording' || simulateWalk) {
+    if (recordStatus !== 'recording') {
       if (watchIdRef.current !== null && 'geolocation' in navigator) {
         navigator.geolocation.clearWatch(watchIdRef.current);
         watchIdRef.current = null;
@@ -222,16 +213,18 @@ export default function App() {
 
         setPoints((prev) => {
           const last = prev[prev.length - 1];
-          if (last) {
-            const distKm = haversineKm(last, { lat: latitude, lng: longitude });
-            if (distKm < 0.004) return prev;
-          }
+          const now = Date.now();
+          const distKm = last ? haversineKm(last, { lat: latitude, lng: longitude }) : 0;
+          // Keep a GPS sample every 5 seconds even when stationary. This preserves
+          // the real activity timeline without inventing movement or pausing tracking.
+          if (last && distKm < 0.004 && now - last.timestamp < 5000) return prev;
+          const elapsedSec = last ? Math.max(0.5, (now - last.timestamp) / 1000) : 1;
           const nextPt: TrackPoint = {
             lat: latitude,
             lng: longitude,
             altitude: altitude ?? last?.altitude ?? 120,
-            speed: speed ?? 1.8,
-            timestamp: Date.now(),
+            speed: speed ?? (distKm * 1000) / elapsedSec,
+            timestamp: now,
             accuracy: accuracy ?? undefined,
           };
           return [...prev, nextPt];
@@ -249,56 +242,7 @@ export default function App() {
         watchIdRef.current = null;
       }
     };
-  }, [recordStatus, simulateWalk]);
-
-  // Optional simulated walk movement
-  useEffect(() => {
-    if (recordStatus !== 'recording' || !simulateWalk) {
-      if (simIntervalRef.current) {
-        window.clearInterval(simIntervalRef.current);
-        simIntervalRef.current = null;
-      }
-      return;
-    }
-
-    setGpsStatus('simulated');
-    simIntervalRef.current = window.setInterval(() => {
-      setPoints((prev) => {
-        const base =
-          prev[prev.length - 1] ?? {
-            lat: livePosition?.[1] ?? DEFAULT_CENTER[1],
-            lng: livePosition?.[0] ?? DEFAULT_CENTER[0],
-            altitude: 145,
-            speed: 2.2,
-            timestamp: Date.now(),
-          };
-
-        simAngleRef.current += (Math.random() - 0.35) * 0.25;
-        const stepLat = Math.cos(simAngleRef.current) * 0.00024;
-        const stepLng = Math.sin(simAngleRef.current) * 0.00031;
-        const nextPt: TrackPoint = {
-          lat: base.lat + stepLat,
-          lng: base.lng + stepLng,
-          altitude: Math.max(40, base.altitude + (Math.random() - 0.38) * 3.8),
-          speed: 2.1 + Math.random() * 0.7,
-          timestamp: Date.now(),
-          accuracy: 5,
-        };
-        const coords: [number, number] = [nextPt.lng, nextPt.lat];
-        setLivePosition(coords);
-        setCurrentCenter(coords);
-        mapRef.current?.easeTo({ center: coords, duration: 600 });
-        return [...prev, nextPt];
-      });
-    }, 900);
-
-    return () => {
-      if (simIntervalRef.current) {
-        window.clearInterval(simIntervalRef.current);
-        simIntervalRef.current = null;
-      }
-    };
-  }, [recordStatus, simulateWalk, livePosition]);
+  }, [recordStatus]);
 
   const liveStats = computeTrackStats(points, waypoints, activeMs);
 
@@ -334,7 +278,6 @@ export default function App() {
     setPlusMenuOpen(false);
     setSettingsOpen(false);
     setRecordStatus('idle');
-    setSimulateWalk(false);
 
     let finalPoints = [...points];
     if (finalPoints.length < 2) {
@@ -386,50 +329,6 @@ export default function App() {
       setSavedSessions([]);
     }
     setSavedDrawerOpen(true);
-  };
-
-  const handleLoadDemoAndCreate = () => {
-    haptics.tap();
-    setPlusMenuOpen(false);
-    const demo = buildDemoSession();
-    const wp1Pt = demo.points[Math.floor(demo.points.length * 0.34)];
-    const wp2Pt = demo.points[Math.floor(demo.points.length * 0.72)];
-    const demoWps: Waypoint[] = [
-      {
-        id: 'demo-wp-1',
-        type: 'photo',
-        lat: wp1Pt.lat,
-        lng: wp1Pt.lng,
-        altitude: wp1Pt.altitude,
-        timestamp: wp1Pt.timestamp,
-        distanceKm: 0.9,
-        progress: 0.34,
-        title: lang === 'en' ? 'Summit Overlook' : 'Belvédère du Sommet',
-        mediaUrl: createDemoSvgPhotoUrl(
-          lang === 'en' ? 'Summit Overlook' : 'Belvédère du Sommet',
-          '212 m'
-        ),
-      },
-      {
-        id: 'demo-wp-2',
-        type: 'photo',
-        lat: wp2Pt.lat,
-        lng: wp2Pt.lng,
-        altitude: wp2Pt.altitude,
-        timestamp: wp2Pt.timestamp,
-        distanceKm: 2.1,
-        progress: 0.72,
-        title: lang === 'en' ? 'City Descent' : 'Descente vers la ville',
-        mediaUrl: createDemoSvgPhotoUrl(
-          lang === 'en' ? 'City Descent' : 'Descente vers la ville',
-          '118 m'
-        ),
-      },
-    ];
-    demo.waypoints = normalizeWaypointProgress(demo.points, demoWps);
-    demo.stats = computeTrackStats(demo.points, demo.waypoints);
-    setActiveSession(demo);
-    setScreen('creation');
   };
 
   const handleSaveWaypoint = useCallback(
@@ -497,14 +396,6 @@ export default function App() {
     }
   };
 
-  const triggerPhoneInstall = () => {
-    if (isInstallable) {
-      void install();
-    } else {
-      setShowInstallHelp(true);
-    }
-  };
-
   return (
     <div className="relative h-[100dvh] w-full overflow-hidden bg-slate-100 dark:bg-[#090D12] select-none">
       {screen === 'creation' && activeSession ? (
@@ -557,18 +448,6 @@ export default function App() {
             </div>
 
             <div className="pointer-events-auto flex items-center gap-1.5 sm:gap-2 shrink-0">
-              {!isInstalled && (
-                <button
-                  type="button"
-                  onClick={triggerPhoneInstall}
-                  aria-label={t.installApp}
-                  className="min-h-[44px] px-2.5 sm:px-3 rounded-2xl bg-white/90 dark:bg-slate-950/75 backdrop-blur-xl border border-slate-200 dark:border-white/12 text-slate-800 dark:text-slate-100 text-xs font-semibold inline-flex items-center gap-1.5 hover:bg-white dark:hover:bg-slate-900 transition-colors shadow-lg whitespace-nowrap"
-                >
-                  <Download className="w-4 h-4 text-tf-accent shrink-0" />
-                  <span className="hidden sm:inline">{t.installApp}</span>
-                </button>
-              )}
-
               <button
                 type="button"
                 onClick={() => {
@@ -787,61 +666,8 @@ export default function App() {
           }}
           gpsStatus={gpsStatus}
           onRecenterGps={screen === 'map' ? handleRecenter : undefined}
-          simulateWalk={simulateWalk}
-          onToggleSimulateWalk={
-            screen === 'map' ? () => setSimulateWalk((v) => !v) : undefined
-          }
           onOpenSavedTracks={openSavedTracks}
-          onLoadDemo={screen === 'map' ? handleLoadDemoAndCreate : undefined}
-          isInstalled={isInstalled}
-          isInstallable={isInstallable}
-          isIOS={isIOS}
-          onTriggerInstall={triggerPhoneInstall}
         />
-      )}
-
-      {/* Mobile Install Guide Modal */}
-      {showInstallHelp && (
-        <div
-          className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/75 backdrop-blur-sm p-0 sm:p-4"
-          onClick={() => setShowInstallHelp(false)}
-        >
-          <div
-            className="w-full max-w-sm bg-white dark:bg-[#0F151D] text-slate-900 dark:text-white border border-slate-200 dark:border-white/12 rounded-t-3xl sm:rounded-3xl p-6 pb-safe space-y-4 shadow-2xl"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="flex items-center justify-between">
-              <h3 className="font-display text-lg font-bold">{t.installApp}</h3>
-              <button
-                type="button"
-                onClick={() => setShowInstallHelp(false)}
-                className="w-9 h-9 rounded-full flex items-center justify-center text-slate-500 dark:text-slate-400"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-            {isIOS ? (
-              <p className="text-sm text-slate-600 dark:text-slate-300 leading-relaxed">
-                {lang === 'en'
-                  ? '1. Tap Share in Safari. 2. Choose Add to Home Screen to launch Track & Field fullscreen.'
-                  : '1. Touchez Partager dans Safari. 2. Choisissez Sur l’écran d’accueil pour lancer Track & Field en plein écran.'}
-              </p>
-            ) : (
-              <p className="text-sm text-slate-600 dark:text-slate-300 leading-relaxed">
-                {lang === 'en'
-                  ? 'In Chrome on Android, open menu ⋮ and tap Install app to install it fullscreen on your phone.'
-                  : 'Dans Chrome sur Android, ouvrez le menu ⋮ puis touchez Installer l’application pour l’installer en plein écran sur votre téléphone.'}
-              </p>
-            )}
-            <button
-              type="button"
-              onClick={() => setShowInstallHelp(false)}
-              className="w-full min-h-[46px] rounded-xl bg-tf-accent text-white text-sm font-semibold"
-            >
-              {t.understood}
-            </button>
-          </div>
-        </div>
       )}
 
       {/* Saved Tracks on Phone Modal */}
