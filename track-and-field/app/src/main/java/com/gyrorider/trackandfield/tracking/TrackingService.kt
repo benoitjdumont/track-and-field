@@ -21,23 +21,28 @@ class TrackingService : Service() {
     override fun onCreate() {
         super.onCreate()
         val manager = getSystemService(NotificationManager::class.java)
-        manager.createNotificationChannel(NotificationChannel(CHANNEL_ID, "Suivi GPS", NotificationManager.IMPORTANCE_LOW))
+        manager.createNotificationChannel(
+            NotificationChannel(CHANNEL_ID, "Suivi GPS", NotificationManager.IMPORTANCE_LOW)
+        )
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
             ACTION_START -> {
-                TrackStore.clear(this)
                 startForegroundCompat()
-                startLocationUpdates()
+                // A repeated Start command must not erase the current outing or duplicate callbacks.
+                if (callback == null) {
+                    TrackStore.clear(this)
+                    startLocationUpdates()
+                }
             }
             ACTION_PAUSE -> {
-                callback?.let(client::removeLocationUpdates)
+                callback?.let { client.removeLocationUpdates(it) }
                 callback = null
                 startForegroundCompat("Suivi en pause")
             }
             ACTION_STOP -> {
-                callback?.let(client::removeLocationUpdates)
+                callback?.let { client.removeLocationUpdates(it) }
                 callback = null
                 stopForeground(STOP_FOREGROUND_REMOVE)
                 stopSelf()
@@ -55,7 +60,9 @@ class TrackingService : Service() {
             .build()
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             startForeground(NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION)
-        } else startForeground(NOTIFICATION_ID, notification)
+        } else {
+            startForeground(NOTIFICATION_ID, notification)
+        }
     }
 
     @Suppress("MissingPermission")
@@ -63,12 +70,13 @@ class TrackingService : Service() {
         val request = LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, 2000L)
             .setMinUpdateDistanceMeters(2f)
             .build()
-        callback = object : LocationCallback() {
+        val locationCallback = object : LocationCallback() {
             override fun onLocationResult(result: LocationResult) {
                 result.locations.forEach { TrackStore.append(this@TrackingService, it) }
             }
         }
-        client.requestLocationUpdates(request, callback!!, mainLooper)
+        callback = locationCallback
+        client.requestLocationUpdates(request, locationCallback, mainLooper)
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
