@@ -1,0 +1,6 @@
+{
+  "name": "Track & Field",
+  "description": "Enregistreur GPS 3D avec carte satellite, capture photo/vidéo/note vocale et studio de création vidéo avec musique en boucle fluide.",
+  "requestFramePermissions": ["camera", "microphone", "geolocation"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
