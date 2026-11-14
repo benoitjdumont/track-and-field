@@ -35,6 +35,7 @@ interface AnalyzeRouteBody {
     elevationGainM: number;
     elevationLossM: number;
     paceMinPerKm: string;
+    bestPaceMinPerKm?: string;
     waypointCount: number;
   };
   waypoints: Array<{
@@ -83,6 +84,7 @@ Stats:
 - Duration: ${mins} min (${body.stats.durationSec} s)
 - Avg Speed: ${body.stats.avgSpeedKmh.toFixed(1)} km/h (max ${body.stats.maxSpeedKmh.toFixed(1)} km/h)
 - Avg Pace: ${body.stats.paceMinPerKm} /km
+- Best Pace: ${body.stats.bestPaceMinPerKm || 'N/A'} /km
 - Elevation Gain: +${body.stats.elevationGainM} m / Loss: -${body.stats.elevationLossM} m
 - Captured Waypoints (${body.stats.waypointCount}):
 ${waypointLines || 'None captured'}
@@ -99,6 +101,7 @@ Statistiques:
 - Durée: ${mins} min (${body.stats.durationSec} s)
 - Vitesse moyenne: ${body.stats.avgSpeedKmh.toFixed(1)} km/h (max ${body.stats.maxSpeedKmh.toFixed(1)} km/h)
 - Allure moyenne: ${body.stats.paceMinPerKm} /km
+- Meilleure allure: ${body.stats.bestPaceMinPerKm || 'N/D'} /km
 - Dénivelé positif: +${body.stats.elevationGainM} m / négatif: -${body.stats.elevationLossM} m
 - Points de repère capturés (${body.stats.waypointCount}):
 ${waypointLines || 'Aucun repère capturé'}
