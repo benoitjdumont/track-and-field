@@ -47,42 +47,34 @@ export function formatPace(speedKmh: number): string {
 }
 
 export function computeBestPace(points: TrackPoint[]): string {
-  if (points.length < 2) return '--\'--"';
+  if (points.length < 2) return '--\\'--"';
 
   const cumulative = getCumulativeDistances(points);
   const totalKm = cumulative[cumulative.length - 1] ?? 0;
+  // Use the fastest rolling kilometre; for shorter activities, use 100 m
+  // (or the full activity when it is shorter than 100 m).
+  const windowKm = totalKm >= 1 ? 1 : Math.min(0.1, totalKm);
+  if (windowKm < 0.05) return '--\\'--"';
+
   let bestSpeedKmh = 0;
+  for (let end = 1; end < points.length; end++) {
+    const startKm = cumulative[end] - windowKm;
+    if (startKm < 0) continue;
 
-  if (totalKm >= 1) {
-    // Fastest rolling kilometre, using interpolated timestamps at the 1 km boundary.
-    for (let end = 1; end < points.length; end++) {
-      const startKm = cumulative[end] - 1;
-      if (startKm < 0) continue;
-
-      let startTime = points[0].timestamp;
-      for (let i = 0; i < end; i++) {
-        const segmentKm = cumulative[i + 1] - cumulative[i];
-        if (segmentKm <= 0 || startKm > cumulative[i + 1]) continue;
-        const fraction = Math.max(0, Math.min(1, (startKm - cumulative[i]) / segmentKm));
-        startTime = points[i].timestamp +
-          (points[i + 1].timestamp - points[i].timestamp) * fraction;
-        break;
-      }
-
-      const durationSec = (points[end].timestamp - startTime) / 1000;
-      if (durationSec <= 0) continue;
-      const speedKmh = 3600 / durationSec;
-      if (speedKmh < 120) bestSpeedKmh = Math.max(bestSpeedKmh, speedKmh);
+    let startTime = points[0].timestamp;
+    for (let i = 0; i < end; i++) {
+      const segmentKm = cumulative[i + 1] - cumulative[i];
+      if (segmentKm <= 0 || startKm > cumulative[i + 1]) continue;
+      const fraction = Math.max(0, Math.min(1, (startKm - cumulative[i]) / segmentKm));
+      startTime =
+        points[i].timestamp + (points[i + 1].timestamp - points[i].timestamp) * fraction;
+      break;
     }
-  } else {
-    // Short activities: use the fastest meaningful moving segment (at least 50 m).
-    for (let i = 1; i < points.length; i++) {
-      const distanceKm = cumulative[i] - cumulative[i - 1];
-      const durationSec = (points[i].timestamp - points[i - 1].timestamp) / 1000;
-      if (distanceKm < 0.05 || durationSec <= 0) continue;
-      const speedKmh = (distanceKm / durationSec) * 3600;
-      if (speedKmh < 120) bestSpeedKmh = Math.max(bestSpeedKmh, speedKmh);
-    }
+
+    const durationSec = (points[end].timestamp - startTime) / 1000;
+    if (durationSec <= 0) continue;
+    const speedKmh = (windowKm / durationSec) * 3600;
+    if (speedKmh < 120) bestSpeedKmh = Math.max(bestSpeedKmh, speedKmh);
   }
 
   return formatPace(bestSpeedKmh);
