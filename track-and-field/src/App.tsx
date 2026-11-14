@@ -280,26 +280,7 @@ export default function App() {
     setSettingsOpen(false);
     setRecordStatus('idle');
 
-    let finalPoints = [...points];
-    if (finalPoints.length < 2) {
-      const base = finalPoints[0] ?? {
-        lat: livePosition?.[1] ?? currentCenter[1],
-        lng: livePosition?.[0] ?? currentCenter[0],
-        altitude: 130,
-        speed: 1.5,
-        timestamp: Date.now() - 60_000,
-      };
-      finalPoints = [
-        base,
-        {
-          ...base,
-          lat: base.lat + 0.0014,
-          lng: base.lng + 0.0018,
-          altitude: base.altitude + 14,
-          timestamp: Date.now(),
-        },
-      ];
-    }
+    const finalPoints = [...points];
 
     const normalizedWaypoints = normalizeWaypointProgress(finalPoints, waypoints);
     const stats = computeTrackStats(finalPoints, normalizedWaypoints, activeMs);
