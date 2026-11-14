@@ -102,6 +102,7 @@ export function computeTrackStats(
       elevationGainM: 0,
       elevationLossM: 0,
       paceMinPerKm: '--\'--"',
+      bestPaceMinPerKm: '--\'--"',
       waypointCount: waypoints.length,
     };
   }
