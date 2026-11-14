@@ -32,6 +32,7 @@ export interface TrackStats {
   elevationGainM: number;
   elevationLossM: number;
   paceMinPerKm: string;
+  bestPaceMinPerKm: string;
   waypointCount: number;
 }
 
