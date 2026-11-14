@@ -331,7 +331,7 @@ export const CreationStudio: React.FC<CreationStudioProps> = ({
 
   const paceGaugePercent = useMemo(() => {
     const toSeconds = (pace: string | undefined) => {
-      const match = /^(\\d+)'(\\d{2})"/.exec(pace ?? '');
+      const match = /^(\d+)'(\d{2})"/.exec(pace ?? '');
       return match ? Number(match[1]) * 60 + Number(match[2]) : 0;
     };
     const average = toSeconds(session.stats.paceMinPerKm);
@@ -1314,7 +1314,7 @@ export const CreationStudio: React.FC<CreationStudioProps> = ({
                     { label: t.maxSpeedLabel, value: `${session.stats.maxSpeedKmh.toFixed(1)} km/h` },
                     { label: t.elevationLabel, value: `+${session.stats.elevationGainM} m` },
                     { label: t.paceLabel, value: `${session.stats.paceMinPerKm} /km` },
-                    { label: t.bestPaceLabel, value: `${session.stats.bestPaceMinPerKm ?? '--\\'--"'} /km` },
+                    { label: t.bestPaceLabel, value: `${session.stats.bestPaceMinPerKm ?? '--'} /km` },
                   ].map((stat) => (
                     <div
                       key={stat.label}
