@@ -6,7 +6,6 @@ import {
   Crosshair,
   FolderOpen,
   Globe,
-  Info,
   Layers,
   Moon,
   Mountain,
@@ -394,6 +393,21 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 );
               })}
             </div>
+          </section>
+
+          <section className="space-y-2.5 pt-4 border-t border-slate-200 dark:border-white/10">
+            <h3 className="font-display text-sm font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-2">
+              <Smartphone className="w-4 h-4 text-tf-accent" />
+              <span>{t.hapticsLabel}</span>
+            </h3>
+            <button
+              type="button"
+              onClick={onToggleHaptics}
+              className="w-full min-h-[44px] px-3.5 rounded-xl bg-slate-100 dark:bg-white/8 text-xs font-medium flex items-center justify-between"
+            >
+              <span>{t.hapticsLabel}</span>
+              <span className="font-mono-tabular font-semibold">{hapticsOn ? 'ON' : 'OFF'}</span>
+            </button>
           </section>
 
         </div>
