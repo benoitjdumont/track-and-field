@@ -524,7 +524,7 @@ export const CreationStudio: React.FC<CreationStudioProps> = ({
 
   const shareSummaryText =
     aiResult?.socialCaption ||
-    `${config.routeTitle} — ${session.stats.distanceKm.toFixed(2)} km · ${formatDuration(session.stats.durationSec)} · +${session.stats.elevationGainM} m · ${lang === 'en' ? 'Avg pace' : 'Allure moy.'} ${session.stats.paceMinPerKm}/km · ${lang === 'en' ? 'Best' : 'Meilleure'} ${session.stats.bestPaceMinPerKm}/km · Track & Field`;
+    `${config.routeTitle} — ${session.stats.distanceKm.toFixed(2)} km · ${formatDuration(session.stats.durationSec)} · +${session.stats.elevationGainM} m · ${lang === 'en' ? 'Avg pace' : 'Allure moy.'} ${session.stats.paceMinPerKm}/km · ${lang === 'en' ? 'Best' : 'Meilleure'} ${session.stats.bestPaceMinPerKm ?? '--'}/km · Track & Field`;
 
   const handleNativeShare = async (preferImage = false) => {
     haptics.tap();
