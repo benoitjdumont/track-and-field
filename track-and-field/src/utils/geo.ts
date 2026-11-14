@@ -151,7 +151,10 @@ export function computeTrackStats(
 export function getCumulativeDistances(points: TrackPoint[]): number[] {
   const cum: number[] = [0];
   for (let i = 1; i < points.length; i++) {
-    cum.push(cum[i - 1] + haversineKm(points[i - 1], points[i]));
+    const segmentKm = haversineKm(points[i - 1], points[i]);
+    // Match the recorder's 4 m GPS noise threshold so stationary jitter does
+    // not inflate route distance, pace, waypoint progress, or elevation charts.
+    cum.push(cum[i - 1] + (segmentKm >= 0.004 ? segmentKm : 0));
   }
   return cum;
 }
