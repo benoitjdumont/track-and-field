@@ -46,6 +46,16 @@ object TrackStore {
         return runCatching { JSONArray(raw) }.getOrElse { JSONArray() }
     }
 
+    fun routeCoordinates(context: Context): List<Pair<Double, Double>> {
+        val points = currentPoints(context)
+        return (0 until points.length()).mapNotNull { index ->
+            val point = points.optJSONObject(index) ?: return@mapNotNull null
+            val lat = point.optDouble("lat", Double.NaN)
+            val lon = point.optDouble("lon", Double.NaN)
+            if (lat.isFinite() && lon.isFinite()) lat to lon else null
+        }
+    }
+
     fun stats(context: Context): TrackStats {
         val points = currentPoints(context)
         if (points.length() == 0) return TrackStats()
