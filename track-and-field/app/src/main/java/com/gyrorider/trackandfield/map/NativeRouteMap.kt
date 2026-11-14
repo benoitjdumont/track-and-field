@@ -37,6 +37,8 @@ private const val STYLE_DAY = "https://tiles.openfreemap.org/styles/liberty"
 private const val STYLE_NIGHT = "https://tiles.openfreemap.org/styles/dark"
 private const val ROUTE_SOURCE_ID = "recorded-route-source"
 private const val ROUTE_LAYER_ID = "recorded-route-line"
+/** Zoom de suivi pendant l'enregistrement : plus près que le zoom de départ. */
+private const val FOLLOW_ZOOM = 17.0
 
 /**
  * Carte plein écran. Dessine le parcours et laisse Compose poser les repères
@@ -100,7 +102,7 @@ fun NativeRouteMap(
         // pendant l'enregistrement, la carte suit la position
         val last = routePoints.lastOrNull()
         if (follow && last != null) {
-            mapState.value?.animateCamera(CameraUpdateFactory.newLatLng(LatLng(last.first, last.second)), 600)
+            mapState.value?.animateCamera(CameraUpdateFactory.newLatLngZoom(LatLng(last.first, last.second), FOLLOW_ZOOM), 800)
         }
     }
 
