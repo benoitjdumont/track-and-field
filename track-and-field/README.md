@@ -11,7 +11,3 @@ GPS activity recorder with a live 3D map, media waypoints, route statistics, ele
 - AI route story and coach analysis powered by Gemini.
 - Native sharing for social apps and GPX export.
 - Saved activities, music, and appearance settings.
-
-## Development
-Install project dependencies with your preferred Node package manager, then run `npm run dev`.
-Create a production build with `npm run build`.
