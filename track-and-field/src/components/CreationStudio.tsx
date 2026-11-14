@@ -524,7 +524,7 @@ export const CreationStudio: React.FC<CreationStudioProps> = ({
 
   const shareSummaryText =
     aiResult?.socialCaption ||
-    `${config.routeTitle} — ${session.stats.distanceKm.toFixed(2)} km · ${formatDuration(session.stats.durationSec)} · +${session.stats.elevationGainM} m · Track & Field`;
+    `${config.routeTitle} — ${session.stats.distanceKm.toFixed(2)} km · ${formatDuration(session.stats.durationSec)} · +${session.stats.elevationGainM} m · ${lang === 'en' ? 'Avg pace' : 'Allure moy.'} ${session.stats.paceMinPerKm}/km · ${lang === 'en' ? 'Best' : 'Meilleure'} ${session.stats.bestPaceMinPerKm}/km · Track & Field`;
 
   const handleNativeShare = async (preferImage = false) => {
     haptics.tap();
@@ -841,6 +841,7 @@ export const CreationStudio: React.FC<CreationStudioProps> = ({
                       { label: t.elevationLabel, value: `+${session.stats.elevationGainM} m` },
                       { label: t.avgSpeedLabel, value: `${session.stats.avgSpeedKmh.toFixed(1)} km/h` },
                       { label: t.paceLabel, value: `${session.stats.paceMinPerKm}` },
+                      { label: t.bestPaceLabel, value: `${session.stats.bestPaceMinPerKm ?? '--'}` },
                       { label: t.waypointsLabel, value: `${session.waypoints.length}` },
                     ].map((s) => (
                       <div key={s.label} className="rounded-xl bg-white/5 px-2 py-1.5 sm:px-3 sm:py-2 min-w-0">
